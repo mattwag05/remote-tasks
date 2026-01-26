@@ -1,3 +1,3 @@
 #!/bin/bash
 # Execute a command on the Raspberry Pi
-ssh 100.121.76.86 "$*"
+exec "$(dirname "$0")/ssh-exec.sh" pi "$*"

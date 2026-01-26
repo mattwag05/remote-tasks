@@ -33,11 +33,12 @@ Mac creates task → Beads (git sync) → Pi worker polls Beads
 
 ## Features
 
-- **Intelligent model selection**: Auto-chooses haiku (fast/cheap) or sonnet (complex) based on task complexity
+- **3-tier intelligent model selection**: Auto-chooses haiku (simple), sonnet (moderate), or opus (complex) based on task complexity
 - **Headless execution**: Worker runs with `--dangerously-skip-permissions` for full autonomy
 - **Presence awareness**: Status command shows online/offline machines
 - **Git-synced state**: Tasks persist via Beads git sync across all machines
 - **Private notifications**: Self-hosted ntfy on Pi (no external services)
+- **Context synchronization**: Automated sync of ~/.claude directory every 5 minutes via cron
 
 ## Installation
 
@@ -85,6 +86,19 @@ Mac creates task → Beads (git sync) → Pi worker polls Beads
    ln -sf ~/Projects/remote-tasks/scripts/pi-exec.sh .
    ln -sf ~/Projects/remote-tasks/scripts/mbp-exec.sh .
    ln -sf ~/Projects/remote-tasks/scripts/status.sh .
+   ln -sf ~/Projects/remote-tasks/scripts/ssh-exec.sh .
+   ln -sf ~/Projects/remote-tasks/scripts/analyze-complexity.sh .
+   ln -sf ~/Projects/remote-tasks/scripts/sync-cron.sh .
+   ```
+
+5. **Set up context synchronization (optional):**
+   ```bash
+   # Install sync-cron.sh to ~/.claude
+   cp ~/Projects/remote-tasks/scripts/sync-cron.sh ~/.claude/
+   chmod +x ~/.claude/sync-cron.sh
+
+   # Add to crontab (syncs every 5 minutes)
+   (crontab -l 2>/dev/null; echo "*/5 * * * * ~/.claude/sync-cron.sh >> ~/.claude/sync.log 2>&1") | crontab -
    ```
 
 ## Usage
@@ -117,7 +131,7 @@ Create tasks that are queued and executed by remote worker daemons:
 1. Task created in Beads with description
 2. Beads syncs via git to all machines
 3. Worker polls every 30s, finds task
-4. Worker analyzes complexity, chooses model (haiku/sonnet)
+4. Worker analyzes complexity, chooses model (haiku/sonnet/opus)
 5. Executes with Claude Code headless mode
 6. Results saved to Beads, synced back
 7. Notification sent via ntfy
@@ -209,13 +223,18 @@ Edit `config/machines.json` to add/remove machines or update IPs:
 
 ### Model Selection Heuristics
 
-The worker automatically chooses the model based on task complexity:
+The worker automatically chooses the model based on task complexity using `analyze-complexity.sh`:
 
-**Sonnet** (complex) if:
-- Task contains keywords: `refactor`, `architecture`, `complex`, `design`, `implement.*feature`, `migrate`, `optimize`
-- Task description > 20 words
+| Complexity | Model | Triggers |
+|------------|-------|----------|
+| Complex | **opus** | Keywords: `security`, `architecture`, `algorithm`, `design pattern`, `audit`, `critical`, `sensitive` |
+| Moderate | **sonnet** | Keywords: `refactor`, `test`, `debug`, `document`, `migrate`, `complex`, `design`, `implement.*feature`, `optimize` OR word count > 20 |
+| Simple | **haiku** | All other tasks |
 
-**Haiku** (simple) otherwise
+**Examples:**
+- `"Run uptime"` → haiku
+- `"Refactor authentication module"` → sonnet
+- `"Security audit of API endpoints"` → opus
 
 ## Troubleshooting
 

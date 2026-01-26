@@ -15,19 +15,31 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
 
-# Determine appropriate model based on task complexity
+# Determine appropriate model based on task complexity (3-tier: haiku/sonnet/opus)
 choose_model() {
     local desc="$1"
     local word_count=$(echo "$desc" | wc -w | tr -d ' ')
-    
-    # Simple heuristics for model selection
-    if echo "$desc" | grep -qiE "(refactor|architecture|complex|design|implement.*feature|migrate|optimize)"; then
-        echo "sonnet"  # Complex tasks need sonnet
-    elif [[ $word_count -gt 20 ]]; then
-        echo "sonnet"  # Long descriptions likely complex
-    else
-        echo "haiku"   # Simple tasks can use haiku (faster, cheaper)
+
+    # Complex tasks requiring deep reasoning -> opus
+    if echo "$desc" | grep -qiE "(security|architecture|algorithm|design pattern|audit|critical|sensitive)"; then
+        echo "opus"
+        return
     fi
+
+    # Moderate complexity tasks -> sonnet
+    if echo "$desc" | grep -qiE "(refactor|test|debug|document|migrate|complex|design|implement.*feature|optimize)"; then
+        echo "sonnet"
+        return
+    fi
+
+    # Word count check - longer descriptions suggest moderate complexity
+    if [[ $word_count -gt 20 ]]; then
+        echo "sonnet"
+        return
+    fi
+
+    # Simple tasks -> haiku (fast, efficient)
+    echo "haiku"
 }
 
 log "Claude worker started for machine: $MACHINE_ID"

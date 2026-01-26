@@ -91,23 +91,23 @@ Mac creates task → Beads (git sync) → Pi worker polls Beads
 
 ### Model Selection
 
-The worker analyzes task complexity and chooses the appropriate model:
+The worker analyzes task complexity and chooses the appropriate model (3-tier):
 
-**Sonnet** (complex, accurate) if:
-- Contains keywords: `refactor`, `architecture`, `complex`, `design`, `implement.*feature`, `migrate`, `optimize`
-- Description > 20 words
-
-**Haiku** (simple, fast) otherwise
+| Complexity | Model | Triggers |
+|------------|-------|----------|
+| Complex | **opus** | Keywords: `security`, `architecture`, `algorithm`, `design pattern`, `audit`, `critical`, `sensitive` |
+| Moderate | **sonnet** | Keywords: `refactor`, `test`, `debug`, `document`, `migrate`, `complex`, `design`, `implement.*feature`, `optimize` OR word count > 20 |
+| Simple | **haiku** | All other tasks |
 
 ### Execution Flags
 
 Worker always uses:
 ```bash
-claude --print --model <haiku|sonnet> --dangerously-skip-permissions "<task>"
+claude --print --model <haiku|sonnet|opus> --dangerously-skip-permissions "<task>"
 ```
 
 - `--print`: Headless execution (no interactive mode)
-- `--model`: Auto-selected based on complexity
+- `--model`: Auto-selected based on complexity (haiku/sonnet/opus)
 - `--dangerously-skip-permissions`: No user prompts (full autonomy)
 
 ### Polling Interval
