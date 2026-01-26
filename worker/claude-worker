@@ -1,0 +1,78 @@
+#!/bin/bash
+# Claude Code Task Worker
+# Polls Beads for tasks assigned to this machine and executes them
+
+MACHINE_ID="pi"
+MAC_HOST="100.114.187.61"  # MacBook Air Tailscale IP
+NTFY_URL="http://100.121.76.86:8091/claude-tasks"
+POLL_INTERVAL=30
+LOG_FILE="$HOME/.local/share/claude-worker.log"
+
+# Ensure log directory exists
+mkdir -p "$(dirname "$LOG_FILE")"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+}
+
+# Determine appropriate model based on task complexity
+choose_model() {
+    local desc="$1"
+    local word_count=$(echo "$desc" | wc -w | tr -d ' ')
+    
+    # Simple heuristics for model selection
+    if echo "$desc" | grep -qiE "(refactor|architecture|complex|design|implement.*feature|migrate|optimize)"; then
+        echo "sonnet"  # Complex tasks need sonnet
+    elif [[ $word_count -gt 20 ]]; then
+        echo "sonnet"  # Long descriptions likely complex
+    else
+        echo "haiku"   # Simple tasks can use haiku (faster, cheaper)
+    fi
+}
+
+log "Claude worker started for machine: $MACHINE_ID"
+
+while true; do
+    # Check for open tasks assigned to this machine via SSH to Mac (where Beads is set up)
+    task=$(ssh -o StrictHostKeyChecking=no "$MAC_HOST" "/opt/homebrew/bin/bd list --assignee=$MACHINE_ID --status=open --json" 2>/dev/null | jq -r '.[0].id // empty')
+
+    if [[ -n "$task" ]]; then
+        log "Found task: $task"
+
+        # Mark in progress
+        ssh "$MAC_HOST" "/opt/homebrew/bin/bd update '$task' --status=in_progress" 2>&1 | tee -a "$LOG_FILE"
+
+        # Get task details - bd show returns an array, so get first element
+        task_info=$(ssh "$MAC_HOST" "/opt/homebrew/bin/bd show '$task' --json" 2>/dev/null | jq -r '.[0]')
+        title=$(echo "$task_info" | jq -r '.title // "Unknown"')
+        desc=$(echo "$task_info" | jq -r '.description // ""')
+
+        log "Executing task: $title"
+        log "Description: $desc"
+
+        # Choose appropriate model based on task complexity
+        model=$(choose_model "$desc")
+        log "Using model: $model"
+
+        # Execute with Claude Code in non-interactive mode with skip permissions
+        if [[ -n "$desc" ]]; then
+            result=$(claude --print --model "$model" --dangerously-skip-permissions "$desc" 2>&1 | head -100)
+        else
+            result="No description provided"
+        fi
+
+        # Close task with result
+        result_summary=$(echo "$result" | head -20)
+        ssh "$MAC_HOST" "/opt/homebrew/bin/bd close '$task' --reason='$result_summary'" 2>&1 | tee -a "$LOG_FILE"
+
+        # Sync to remote
+        ssh "$MAC_HOST" "/opt/homebrew/bin/bd sync" 2>&1 | tee -a "$LOG_FILE"
+
+        # Notify
+        curl -s -d "Task $task completed on $MACHINE_ID ($model): $title" "$NTFY_URL" >/dev/null
+
+        log "Task $task completed with $model"
+    fi
+
+    sleep "$POLL_INTERVAL"
+done

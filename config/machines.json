@@ -1,0 +1,30 @@
+{
+  "machines": {
+    "pi": {
+      "ip": "100.121.76.86",
+      "name": "Raspberry Pi 5",
+      "hasWorker": true,
+      "capabilities": ["task-worker", "ntfy-server"]
+    },
+    "mbp": {
+      "ip": "100.88.238.125",
+      "name": "M1 MacBook Pro",
+      "hasWorker": false,
+      "capabilities": []
+    },
+    "air": {
+      "ip": "100.114.187.61",
+      "name": "MacBook Air",
+      "hasWorker": false,
+      "capabilities": []
+    }
+  },
+  "ntfy": {
+    "server": "http://100.121.76.86:8091",
+    "topic": "claude-tasks"
+  },
+  "beads": {
+    "remote": "git@github.com:mattwag05/beads-registry.git",
+    "assignees": ["pi", "mbp", "air"]
+  }
+}
