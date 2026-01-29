@@ -3,10 +3,12 @@
 # Polls Beads for tasks assigned to this machine and executes them
 
 MACHINE_ID="pi"
-MAC_HOST="100.114.187.61"  # MacBook Air Tailscale IP
+MAC_HOST="matthews-macbook-air"  # MacBook Air Tailscale IP
 NTFY_URL="http://100.121.76.86:8091/claude-tasks"
 POLL_INTERVAL=30
 LOG_FILE="$HOME/.local/share/claude-worker.log"
+TASK_TIMEOUT=300  # 5 minutes max per task
+STALE_PROCESS_AGE=1800  # 30 minutes
 
 # Ensure log directory exists
 mkdir -p "$(dirname "$LOG_FILE")"
@@ -15,36 +17,31 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
 
-# Determine appropriate model based on task complexity (3-tier: haiku/sonnet/opus)
+# Determine appropriate model based on task complexity
 choose_model() {
     local desc="$1"
     local word_count=$(echo "$desc" | wc -w | tr -d ' ')
 
-    # Complex tasks requiring deep reasoning -> opus
-    if echo "$desc" | grep -qiE "(security|architecture|algorithm|design pattern|audit|critical|sensitive)"; then
-        echo "opus"
-        return
+    # Simple heuristics for model selection
+    if echo "$desc" | grep -qiE "(refactor|architecture|complex|design|implement.*feature|migrate|optimize)"; then
+        echo "sonnet"  # Complex tasks need sonnet
+    elif [[ $word_count -gt 20 ]]; then
+        echo "sonnet"  # Long descriptions likely complex
+    else
+        echo "haiku"   # Simple tasks can use haiku (faster, cheaper)
     fi
-
-    # Moderate complexity tasks -> sonnet
-    if echo "$desc" | grep -qiE "(refactor|test|debug|document|migrate|complex|design|implement.*feature|optimize)"; then
-        echo "sonnet"
-        return
-    fi
-
-    # Word count check - longer descriptions suggest moderate complexity
-    if [[ $word_count -gt 20 ]]; then
-        echo "sonnet"
-        return
-    fi
-
-    # Simple tasks -> haiku (fast, efficient)
-    echo "haiku"
 }
 
 log "Claude worker started for machine: $MACHINE_ID"
 
 while true; do
+    # Kill stale claude processes older than 30 minutes (prevents memory leaks)
+    pkill -f "claude --print" --older "$STALE_PROCESS_AGE" 2>/dev/null && log "Killed stale claude processes"
+
+    # Log current memory usage for monitoring
+    mem_usage=$(free -h | awk '/^Mem:/{print $3 "/" $2}')
+    log "Memory: $mem_usage"
+
     # Check for open tasks assigned to this machine via SSH to Mac (where Beads is set up)
     task=$(ssh -o StrictHostKeyChecking=no "$MAC_HOST" "/opt/homebrew/bin/bd list --assignee=$MACHINE_ID --status=open --json" 2>/dev/null | jq -r '.[0].id // empty')
 
@@ -66,9 +63,15 @@ while true; do
         model=$(choose_model "$desc")
         log "Using model: $model"
 
-        # Execute with Claude Code in non-interactive mode with skip permissions
+        # Execute with Claude Code with timeout to prevent hangs
         if [[ -n "$desc" ]]; then
-            result=$(claude --print --model "$model" --dangerously-skip-permissions "$desc" 2>&1 | head -100)
+            result=$(timeout "$TASK_TIMEOUT" claude --print --model "$model" --dangerously-skip-permissions "$desc" 2>&1 | head -100)
+            exit_code=$?
+
+            if [[ $exit_code -eq 124 ]]; then
+                result="Task timed out after ${TASK_TIMEOUT}s"
+                log "WARNING: Task $task timed out"
+            fi
         else
             result="No description provided"
         fi

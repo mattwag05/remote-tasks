@@ -2,18 +2,22 @@
   "machines": {
     "pi": {
       "ip": "100.121.76.86",
+      "hostname": "raspberrypi",
       "name": "Raspberry Pi 5",
       "hasWorker": true,
       "capabilities": ["task-worker", "ntfy-server"]
     },
     "mbp": {
-      "ip": "100.88.238.125",
+      "ip": "100.77.15.109",
+      "hostname": "katies-macbook-pro.tail4902cc.ts.net",
+      "ssh_user": "matthewwagner",
       "name": "M1 MacBook Pro",
       "hasWorker": false,
       "capabilities": []
     },
     "air": {
-      "ip": "100.114.187.61",
+      "ip": "100.79.26.89",
+      "hostname": "matthews-macbook-air",
       "name": "MacBook Air",
       "hasWorker": false,
       "capabilities": []

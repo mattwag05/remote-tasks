@@ -14,9 +14,40 @@ Project-specific context for Claude Code when working with the Remote Tasks syst
 
 | Machine | Alias | Tailscale IP | Has Worker | Status |
 |---------|-------|--------------|------------|--------|
-| MacBook Air | `air` | 100.114.187.61 | No | Primary (this machine) |
-| M1 MacBook Pro | `mbp` | 100.88.238.125 | No | Available |
+| MacBook Air | `air` | 100.79.26.89 | No | Primary (this machine) |
+| M1 MacBook Pro | `mbp` | 100.77.15.109 | No | Available |
 | Raspberry Pi 5 | `pi` | 100.121.76.86 | Yes | Active worker + ntfy |
+
+## Tailscale Configuration
+
+### Correct Startup Command
+
+All homelab machines should use:
+```bash
+sudo tailscale up --accept-dns=false --advertise-tags=tag:homelab --ssh --accept-routes=false
+```
+
+**Note:** macOS GUI version is sandboxed and cannot run `--ssh`. Use regular SSH instead.
+
+### Common Issues
+
+- **Configuration drift:** Run `tailscale debug prefs` to verify settings match documented command
+- **IP address changes:** Tailscale IPs can drift - always use MagicDNS hostnames in scripts (e.g., `raspberrypi` not `100.121.76.86`)
+- **Requires all flags:** `tailscale up` requires mentioning all non-default flags or use `--reset`
+- **MBP CLI path:** Tailscale installed via native installer creates `/usr/local/bin/tailscale` (may not be in PATH)
+
+### Verifying Configuration
+
+```bash
+# Check current settings
+tailscale debug prefs | jq '{RunSSH, CorpDNS, RouteAll, AdvertiseTags}'
+
+# Check network status
+tailscale status
+
+# Verify connectivity
+tailscale netcheck
+```
 
 ## Quick Reference
 
@@ -114,6 +145,18 @@ claude --print --model <haiku|sonnet|opus> --dangerously-skip-permissions "<task
 
 Worker checks for new tasks every **30 seconds**.
 
+### Protection Against Memory Leaks (Added 2026-01-29)
+
+The worker includes these safeguards:
+- **Task timeout:** 5 minutes max (`timeout 300`)
+- **Stale process cleanup:** Kills `claude --print` older than 30 min every poll
+- **Memory logging:** Logs RAM usage each iteration for monitoring
+
+**Check logs for issues:**
+```bash
+ssh 100.121.76.86 "tail -100 ~/.local/share/claude-worker.log | grep -E 'Memory|timeout|Killed'"
+```
+
 ## Integration with Claude Code
 
 The `remote` skill at `~/.claude/skills/remote/` provides commands that call these scripts:
@@ -130,6 +173,30 @@ The `remote` skill at `~/.claude/skills/remote/` provides commands that call the
 ```
 
 ## Troubleshooting
+
+### High Memory Usage on Pi
+
+**Symptoms:** Memory > 70%, swap usage climbing
+
+**Check:**
+1. Process list: `ssh 100.121.76.86 "ps aux --sort=-%mem | head -20"`
+2. Docker stats: `ssh 100.121.76.86 "docker stats --no-stream"`
+3. Stale Claude processes: `ssh 100.121.76.86 "pgrep -af claude"`
+
+**Distinguish worker from stale sessions:**
+- Worker uses: `claude --print --model X --dangerously-skip-permissions`
+- Stale sessions: `claude` (no `--print` flag) or interactive usage
+
+**Fix:**
+```bash
+# Kill stale Claude processes (not the worker)
+ssh 100.121.76.86 "pkill -f 'claude --model' --exclude 'claude --print'"
+
+# Or kill specific PID
+ssh 100.121.76.86 "kill -9 <PID>"
+```
+
+**Prevent recurrence:** Worker script includes stale process cleanup (added 2026-01-29)
 
 ### Task Not Executing
 
@@ -195,6 +262,22 @@ bd sync
 
 ## Development
 
+### Editing Files on Pi
+
+**Pattern:** Create/edit locally, then upload via SSH pipe
+```bash
+# Edit file locally first
+vim /tmp/my-file.txt
+
+# Upload to Pi
+cat /tmp/my-file.txt | ssh 100.121.76.86 "cat > /path/on/pi/file.txt"
+
+# For executable scripts, add chmod
+cat /tmp/script.sh | ssh 100.121.76.86 "cat > ~/.local/bin/script.sh && chmod +x ~/.local/bin/script.sh"
+```
+
+**Why:** Safer than direct remote editing (preview changes, version control, easier rollback)
+
 ### Adding a New Machine
 
 1. Add machine to Tailscale network
@@ -247,6 +330,7 @@ bd sync
 remote-tasks/
 ├── README.md                    # Public documentation
 ├── CLAUDE.md                    # This file (Claude Code context)
+├── MAINTENANCE.md               # Operational changes and optimizations
 ├── config/
 │   └── machines.json            # Machine registry
 ├── scripts/
@@ -308,6 +392,7 @@ remote-tasks/
 ### Regular Tasks
 
 - **Weekly:** Check worker logs for errors
+- **After worker changes:** Always sync live Pi version back to repo: `ssh raspberrypi "cat ~/.local/bin/claude-worker" > worker/claude-worker`
 - **Monthly:** Update ntfy Docker image
 - **As needed:** Review and close completed Beads tasks
 

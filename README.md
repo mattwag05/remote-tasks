@@ -148,10 +148,10 @@ Output:
 ```
 === Machine Status ===
 
-Raspberry Pi (100.121.76.86):
+Raspberry Pi (raspberrypi):
   ✓ Online
 
-M1 MacBook Pro (100.88.238.125):
+M1 MacBook Pro (katies-macbook-pro):
   ✓ Online
 
 === Pending Remote Tasks ===

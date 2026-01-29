@@ -12,11 +12,11 @@ if [ -z "$MACHINE" ] || [ -z "$COMMAND" ]; then
     exit 1
 fi
 
-# Machine IP lookup (Tailscale IPs)
+# Machine hostname lookup (Tailscale MagicDNS)
 case "$MACHINE" in
-    pi)  IP="100.121.76.86" ;;
-    mbp) IP="100.88.238.125" ;;
-    air) IP="100.114.187.61" ;;
+    pi)  HOST="raspberrypi" ;;
+    mbp) HOST="matthewwagner@katies-macbook-pro.tail4902cc.ts.net" ;;
+    air) HOST="matthews-macbook-air" ;;
     *)
         echo "Unknown machine: $MACHINE" >&2
         echo "Valid machines: pi, mbp, air" >&2
@@ -24,4 +24,4 @@ case "$MACHINE" in
         ;;
 esac
 
-ssh "$IP" "$COMMAND"
+ssh "$HOST" "$COMMAND"

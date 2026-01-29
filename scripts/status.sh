@@ -4,16 +4,16 @@
 echo "=== Machine Status ==="
 echo ""
 
-echo "Raspberry Pi (100.121.76.86):"
-if ssh -o ConnectTimeout=3 100.121.76.86 "uptime" 2>/dev/null; then
+echo "Raspberry Pi (raspberrypi):"
+if ssh -o ConnectTimeout=3 raspberrypi "uptime" 2>/dev/null; then
     echo "  ✓ Online"
 else
     echo "  ✗ Offline"
 fi
 echo ""
 
-echo "M1 MacBook Pro (100.88.238.125):"
-if ssh -o ConnectTimeout=3 100.88.238.125 "uptime" 2>/dev/null; then
+echo "M1 MacBook Pro (katies-macbook-pro):"
+if ssh -o ConnectTimeout=3 matthewwagner@katies-macbook-pro.tail4902cc.ts.net "uptime" 2>/dev/null; then
     echo "  ✓ Online"
 else
     echo "  ✗ Offline"
