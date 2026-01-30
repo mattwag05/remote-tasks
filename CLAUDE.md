@@ -51,6 +51,16 @@ tailscale netcheck
 
 ## Quick Reference
 
+### iPhone SSH Access (Termius)
+
+**Setup:**
+1. Termius host config: `100.79.26.89`, port 22, user `matthewwagner`, SSH key from Keychain
+2. SSH in, run: `tmux new -s claude` (first time) or `tmux attach -t claude` (reconnect)
+3. Start Claude: `claude`
+4. Detach: `Ctrl+B` then `D` (session persists)
+
+**Why tmux:** Allows disconnecting from SSH without killing Claude session
+
 ### Common Commands
 
 ```bash
@@ -101,12 +111,14 @@ ssh 100.121.76.86 "docker logs ntfy"
 ### Flow Diagram
 
 ```
-Mac creates task → Beads (git sync) → Pi worker polls Beads
+Mac creates task → Beads (local JSONL) → Pi SSHes to Mac → reads Beads
                                     ↓
                              Executes with Claude
                                     ↓
-                         Updates Beads + sends ntfy
+                   SSHes to Mac → updates Beads → sends ntfy
 ```
+
+**Critical detail:** Worker on Pi does NOT have its own Beads database. It SSHes to the Mac (`100.79.26.89`) and runs `bd` commands there via SSH. The Mac is the single source of truth for all Beads data.
 
 ### Component Locations
 
@@ -173,6 +185,47 @@ The `remote` skill at `~/.claude/skills/remote/` provides commands that call the
 ```
 
 ## Troubleshooting
+
+### Worker Can't Connect to Mac
+
+**Symptoms:** Worker logs show no tasks found, or SSH connection errors
+
+**Root cause:** Pi cannot resolve MagicDNS hostnames (e.g., `matthews-macbook-air`)
+
+**Fix:** Worker must use Tailscale IPs directly:
+```bash
+# In worker/claude-worker, use IP not hostname:
+MAC_HOST="100.79.26.89"  # NOT "matthews-macbook-air"
+```
+
+**After fixing:** Sync to Pi and restart:
+```bash
+cat worker/claude-worker | ssh raspberrypi "cat > ~/.local/bin/claude-worker && chmod +x ~/.local/bin/claude-worker"
+ssh raspberrypi "systemctl --user restart claude-worker"
+```
+
+### Claude Command Not Found in Worker
+
+**Symptoms:** Worker logs show `timeout: failed to run command 'claude': No such file or directory`
+
+**Root cause:** Claude CLI not in systemd service PATH
+
+**Fix:** Worker must use full path `$HOME/.local/bin/claude` instead of just `claude`
+```bash
+# In worker execution line:
+result=$(timeout "$TASK_TIMEOUT" "$HOME/.local/bin/claude" --print ...)
+```
+
+### Delegate Script "No beads database found"
+
+**Symptoms:** `delegate.sh` fails with "Error: no beads database found"
+
+**Root cause:** Script runs `bd` commands, which look for `.beads/` in current directory
+
+**Fix:** Run delegate.sh from home directory where global `.beads/` exists:
+```bash
+cd ~ && ~/Projects/remote-tasks/scripts/delegate.sh pi "task description"
+```
 
 ### High Memory Usage on Pi
 
