@@ -3,7 +3,7 @@
 # Polls Beads for tasks assigned to this machine and executes them
 
 MACHINE_ID="pi"
-MAC_HOST="matthews-macbook-air"  # MacBook Air Tailscale IP
+MAC_HOST="100.79.26.89"  # MacBook Air Tailscale IP
 NTFY_URL="http://100.121.76.86:8091/claude-tasks"
 POLL_INTERVAL=30
 LOG_FILE="$HOME/.local/share/claude-worker.log"
@@ -22,8 +22,10 @@ choose_model() {
     local desc="$1"
     local word_count=$(echo "$desc" | wc -w | tr -d ' ')
 
-    # Simple heuristics for model selection
-    if echo "$desc" | grep -qiE "(refactor|architecture|complex|design|implement.*feature|migrate|optimize)"; then
+    # Three-tier model selection matching analyze-complexity.sh
+    if echo "$desc" | grep -qiE "(security|architecture|algorithm|design pattern|audit|critical|sensitive)"; then
+        echo "opus"    # Critical/security-sensitive tasks need opus
+    elif echo "$desc" | grep -qiE "(refactor|test|debug|document|migrate|complex|design|implement.*feature|optimize)"; then
         echo "sonnet"  # Complex tasks need sonnet
     elif [[ $word_count -gt 20 ]]; then
         echo "sonnet"  # Long descriptions likely complex
@@ -65,7 +67,7 @@ while true; do
 
         # Execute with Claude Code with timeout to prevent hangs
         if [[ -n "$desc" ]]; then
-            result=$(timeout "$TASK_TIMEOUT" claude --print --model "$model" --dangerously-skip-permissions "$desc" 2>&1 | head -100)
+            result=$(timeout "$TASK_TIMEOUT" "$HOME/.local/bin/claude" --print --model "$model" --dangerously-skip-permissions "$desc" 2>&1 | head -100)
             exit_code=$?
 
             if [[ $exit_code -eq 124 ]]; then
